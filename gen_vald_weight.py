@@ -15,7 +15,7 @@ import torch._utils
 weight_path = './models/weights/'
 
 #f = open(weight_path + 'vlad_weight.txt', 'w')
-state_dict = torch.load('/home/zzl/Documents/netvlad_apr/models/weights/originNetVlad.pkl')
+state_dict = torch.load('/home/zzl/Documents/NetVlad/models/weights/originNetVlad.pkl')
 conv_weight = state_dict['net_vlad.conv.weight'].numpy()
 N, C = conv_weight.shape[:2]
 conv_weight = conv_weight.reshape(N,C)
