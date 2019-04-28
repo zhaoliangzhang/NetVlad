@@ -88,8 +88,8 @@ def normalize3(x):
     
     return x
 
-input_path = '/home/zzl/Documents/netvlad_apr/output_dir/float_output/'
-weight_path = '/home/zzl/Documents/netvlad_apr/models/weights/'
+input_path = '/home/zzl/Documents/NetVlad/output_dir/float_output/'
+weight_path = '/home/zzl/Documents/NetVlad_apr/models/weights/'
 input = np.loadtxt(input_path + 'result.txt', dtype = float)
 
 input_normalized = normalize(input)
