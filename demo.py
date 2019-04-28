@@ -30,7 +30,7 @@ except AttributeError:
 # test the model or generate model
 test_mod = True
 
-caffemodel_dir = '/home/zzl/Documents/netvlad_apr/deephi_netvlad/transformed/'
+caffemodel_dir = '/home/zzl/Documents/NetVlad/deephi_netvlad/transformed/'
 #imagepath = '/home/zzl/Documents/netvlad_apr/test_data/'
 input_size = (1, 3, 384, 384)
 
@@ -45,7 +45,7 @@ model = OriginNetVlad(back_front_all="front")
 
 #state_dict = torch.load('/home/yujc/netvlad/netvlad_kitti/models/weights/resnetvlad128.pkl.epoch9')
 #del state_dict['encoder.bn1.num_batches_tracked']
-state_dict = torch.load('/home/zzl/Documents/netvlad_apr/models/weights/originNetVlad.pkl')
+state_dict = torch.load('/home/zzl/Documents/NetVlad/models/weights/originNetVlad.pkl')
 model_dict = model.state_dict()
 
 #pretrained_dict =  {k: v for k, v in state_dict.items() if k in model_dict}
@@ -62,7 +62,7 @@ model.eval()
 input_size = (1, 3, 384, 384)
 #image = np.ones(input_size)
 
-input_img = cv2.imread("/home/zzl/Documents/netvlad_apr/test_data/red.jpg")
+input_img = cv2.imread("/home/zzl/Documents/NetVlad/test_data/red.jpg")
 # = cv2.imread("/home/yujc/netvlad/image_2/000000.png")
 #inpu_img = cv2.imread("12.jpg")
 #inpu_img = cv2.resize(inpu_img,input_size[2:])
