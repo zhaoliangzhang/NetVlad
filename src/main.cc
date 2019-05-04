@@ -305,33 +305,14 @@ int main(void) {
 	task = dpuCreateTask(kernel, 0);
 
 	//load vlad parameters
-	ifstream in_conv("/home/linaro/netvlad/model/conv_weight.txt", ios::in);
-	//float* conv_weight = new float[32768];
-	for (int i = 0; i < 32768; i++) {
-		in_conv >> conv_weight[i];
-	}
-	in_conv.close();
+	fstream in("/home/linaro/netvlad/model/vlad_weight", ios::in | ios::binary);
+	in.read((char*)conv_weight, 32768*sizeof(float));
+    in.read((char*)cent, 32768*sizeof(float));
+    in.read((char*)WPCA_w, 134217728*sizeof(float));
+    in.read((char*)WPCA_b, 4096*sizeof(float));
+    in.close();
 
-	ifstream in_cent("/home/linaro/netvlad/model/vlad_centroids.txt", ios::in);
-	//float* cent = new float[32768];
-	for (int i = 0; i < 32768; i++) {
-		in_cent >> cent[i];
-	}
-	in_cent.close();
-
-	ifstream in_WPCA_w("/home/linaro/netvlad/model/WPCA_weight.txt", ios::in);
-	//float* WPCA_w = new float[134217728];
-	for (int i = 0; i < 134217728; i++) {
-		in_WPCA_w >> WPCA_w[i];
-	}
-	in_WPCA_w.close();
-
-	ifstream in_WPCA_b("/home/linaro/netvlad/model/WPCA_bias.txt", ios::in);
-	//float* WPCA_b = new float[4096];
-	for (int i = 0; i < 4096; i++) {
-		in_WPCA_b >> WPCA_b[i];
-	}
-	in_WPCA_b.close();
+	
     // Doing face detection.
     run_netvlad(task, conv_weight, cent, WPCA_w, WPCA_b);
 
