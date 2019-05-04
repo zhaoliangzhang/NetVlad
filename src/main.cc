@@ -45,6 +45,11 @@ using namespace cv;
 
 const string baseImagePath = "/home/linaro/netvlad/test_image/";
 
+float conv_weight[32768];
+float cent[32768];
+float WPCA_w[134217728];
+float WPCA_b[4096];
+
 void ListImages(string const &path, vector<string> &images) {
     images.clear();
     struct dirent *entry;
@@ -80,7 +85,7 @@ void out_file(DPUTask* task) {
 	int num = dpuGetOutputTensorSize(task, OUTPUT_NODE);
 	int8_t* result = new int8_t[num];
 	cout<<num<<endl;
-	dpuGetOutputTensorInHWCInt8(task, OUTPUT_NODE, result, num);
+	/*dpuGetOutputTensorInHWCInt8(task, OUTPUT_NODE, result, num);
 	//result = dpuGetOutputTensorAddress(task, OUTPUT_NODE);
 	ofstream outfile("result_HWC.txt", ios::out);
 	if(!outfile) {
@@ -90,7 +95,7 @@ void out_file(DPUTask* task) {
 	for(int i=0; i<num; i++) {
 		outfile<<(+result[i])*2<<" ";
 	}
-	outfile.close();
+	outfile.close();*/
 
 	dpuGetOutputTensorInCHWInt8(task, OUTPUT_NODE, result, num);
 	//result = dpuGetOutputTensorAddress(task, OUTPUT_NODE);
@@ -138,7 +143,103 @@ void out_file(DPUTask* task) {
 	delete[] result;
 }*/
 
-void run_netvlad(DPUTask *task) {
+void normalize(float *data) {
+	for (int i = 0; i < 576; i++) {
+		float sum = 0;
+		for (int j = 0; j < 512; j++) {
+			sum = sum + data[j * 576 + i] * data[j * 576 + i];
+		}
+		sum = sqrt(sum);
+		if (sum < 1e-12) sum = 1e-12;
+		for (int j = 0; j < 512; j++) {
+			data[j * 576 + i] = data[j * 576 + i] / sum;
+		}
+	}
+}
+
+void conv(float *data, float *a, float *w) {
+	for (int i = 0; i < 36864; i++) {
+		a[i] = 0;
+	}
+	for (int i = 0; i < 64; i++) {
+		for (int j = 0; j < 576; j++) {
+			for (int k = 0; k < 512; k++) {
+				a[i * 576 + j] = a[i * 576 + j] + data[k * 576 + j] * w[512 * i + k];
+			}
+		}
+	}
+	for (int i = 0; i < 576; i++) {
+		float sum = 0;
+		for (int j = 0; j < 64; j++) {
+			a[j * 576 + i] = a[j * 576 + i] - 360;
+			sum = sum + exp(a[j * 576 + i]);
+		}
+		for (int j = 0; j < 64; j++) {
+			a[j * 576 + i] = exp(a[j * 576 + i]) / sum;
+		}
+	}
+}
+
+void vlad_core(float *data, float *a, float *v, float *c) {
+	float* temp = new float[64 * 512 * 576];
+	for (int i = 0; i < 64; i++) {
+		for (int j = 0; j < 512; j++) {
+			for (int k = 0; k < 576; k++) {
+				temp[i * 576 * 512 + j * 576 + k] = data[j * 576 + k] + c[i * 512 + j];
+				temp[i * 576 * 512 + j * 576 + k] *= a[576 * i + k];
+			}
+		}
+	}
+	for (int i = 0; i < 64; i++) {
+		for (int j = 0; j < 512; j++) {
+			for (int k = 0; k < 576; k++) {
+				v[i * 512 + j] += temp[i * 512 * 576 + j * 576 + k];
+			}
+		}
+	}
+}
+
+void normalize2(float *vlad) {
+	float* temp = new float[32768];
+	for (int i = 0; i < 64; i++) {
+		float sum = 0;
+		for (int j = 0; j < 512; j++) {
+			sum = sum + vlad[j + i * 512] * vlad[j + i * 512];
+		}
+		sum = sqrt(sum);
+		if (sum < 1e-12) sum = 1e-12;
+		for (int j = 0; j < 512; j++) {
+			temp[j * 64 + i] = vlad[j + i * 512] / sum;
+		}
+	}
+	float sum = 0;
+	for (int i = 0; i < 32768; i++)sum += (temp[i] * temp[i]);
+	sum = sqrt(sum);
+	for (int i = 0; i < 32768; i++)vlad[i] = (temp[i] / sum);
+}
+
+void fc(float* v, float* f, float* w, float* b) {
+	for (int i = 0; i < 4096; i++)f[i] = 0;
+	for (int i = 0; i < 4096; i++) {
+		for (int j = 0; j < 32768; j++) {
+			f[i] = f[i] + v[j] * w[i * 32768 + j];
+		}
+		f[i] = f[i] + b[i];
+	}
+}
+
+void normalize3(float* f) {
+	float sum = 0;
+	for (int i = 0; i < 4096; i++) {
+		sum += f[i] * f[i];
+	}
+	sum = sqrt(sum);
+	for (int i = 0; i < 4096; i++) {
+		f[i] = f[i] / sum;
+	}
+}
+
+void run_netvlad(DPUTask *task, float* conv_w, float* cent, float* WPCA_w, float* WPCA_b) {
 	assert(task);
 	vector<string> images;
 	ListImages(baseImagePath, images);
@@ -162,7 +263,30 @@ void run_netvlad(DPUTask *task) {
 		long long timeProf = dpuGetTaskProfile(task);
 		cout << "  DPU CONV Execution time: " << (timeProf * 1.0f) << "us\n";
 		
-		out_file(task);
+		int num = dpuGetOutputTensorSize(task, OUTPUT_NODE);
+	    int8_t* result = new int8_t[num];
+		float* f_result = new float[num];
+		dpuGetOutputTensorInCHWInt8(task, OUTPUT_NODE, result, num);
+		for(int i=0; i<num; i++) {
+		    f_result[i]=(+result[i])*2;
+	    }
+		delete[] result;
+
+		normalize(f_result);
+		float* after_softmax = new float[36864];
+		conv(f_result, after_softmax, conv_w);
+		//cout << after_softmax[0] << " " << after_softmax[1] << " " << after_softmax[32767];
+		float* vlad = new float[32768];
+		for (int i = 0; i < 32768; i++)vlad[i] = 0;
+		vlad_core(f_result, after_softmax, vlad, cent);
+		delete[] f_result;
+		delete[] after_softmax;
+
+		normalize2(vlad);
+
+		cout<< vlad[0] << " " << vlad[1] << " " << vlad[32767];
+
+		//out_file(task);
     }
 	
 	
@@ -170,6 +294,7 @@ void run_netvlad(DPUTask *task) {
 }
 
 int main(void) {
+
     // Attach to DPU driver and prepare for running
     dpuOpen();
 
@@ -179,8 +304,36 @@ int main(void) {
 	DPUTask *task;
 	task = dpuCreateTask(kernel, 0);
 
+	//load vlad parameters
+	ifstream in_conv("/home/linaro/netvlad/model/conv_weight.txt", ios::in);
+	//float* conv_weight = new float[32768];
+	for (int i = 0; i < 32768; i++) {
+		in_conv >> conv_weight[i];
+	}
+	in_conv.close();
+
+	ifstream in_cent("/home/linaro/netvlad/model/vlad_centroids.txt", ios::in);
+	//float* cent = new float[32768];
+	for (int i = 0; i < 32768; i++) {
+		in_cent >> cent[i];
+	}
+	in_cent.close();
+
+	ifstream in_WPCA_w("/home/linaro/netvlad/model/WPCA_weight.txt", ios::in);
+	//float* WPCA_w = new float[134217728];
+	for (int i = 0; i < 134217728; i++) {
+		in_WPCA_w >> WPCA_w[i];
+	}
+	in_WPCA_w.close();
+
+	ifstream in_WPCA_b("/home/linaro/netvlad/model/WPCA_bias.txt", ios::in);
+	//float* WPCA_b = new float[4096];
+	for (int i = 0; i < 4096; i++) {
+		in_WPCA_b >> WPCA_b[i];
+	}
+	in_WPCA_b.close();
     // Doing face detection.
-    run_netvlad(task);
+    run_netvlad(task, conv_weight, cent, WPCA_w, WPCA_b);
 
 	dpuDestroyTask(task);
 
