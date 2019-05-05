@@ -47,13 +47,13 @@ const string baseImagePath = "/home/linaro/netvlad/test_image/";
 
 float conv_weight[32768];
 float cent[32768];
-float WPCA_w[134217728];
-float WPCA_b[4096];
+float WPCA_w[4194304];
+float WPCA_b[128];
 
 float f_result[294912];
 float after_softmax[36864];
 float vlad[32768];
-float fin[4096];
+float fin[128];
 
 void ListImages(string const &path, vector<string> &images)
 {
@@ -262,9 +262,9 @@ void normalize2(float *vlad)
 
 void fc(float *v, float *f, float *w, float *b)
 {
-	for (int i = 0; i < 4096; i++)
+	for (int i = 0; i < 128; i++)
 		f[i] = 0;
-	for (int i = 0; i < 4096; i++)
+	for (int i = 0; i < 128; i++)
 	{
 		for (int j = 0; j < 32768; j++)
 		{
@@ -277,12 +277,12 @@ void fc(float *v, float *f, float *w, float *b)
 void normalize3(float *f)
 {
 	float sum = 0;
-	for (int i = 0; i < 4096; i++)
+	for (int i = 0; i < 128; i++)
 	{
 		sum += f[i] * f[i];
 	}
 	sum = sqrt(sum);
-	for (int i = 0; i < 4096; i++)
+	for (int i = 0; i < 128; i++)
 	{
 		f[i] = f[i] / sum;
 	}
@@ -335,7 +335,7 @@ void run_netvlad(DPUTask *task, float *conv_w, float *cent, float *WPCA_w, float
 		fc(vlad, fin, WPCA_w, WPCA_b);
 		normalize3(fin);
 
-		//cout<< fin[0] << " " << fin[1] << " " << fin[4095]<<endl;
+		cout<< fin[0] << " " << fin[1] << " " << fin[2]<<endl;
 
 		//out_file(task);
 	}
@@ -357,8 +357,8 @@ int main(void)
 	fstream in("/home/linaro/netvlad/model/vlad_weight", ios::in | ios::binary);
 	in.read((char *)conv_weight, 32768 * sizeof(float));
 	in.read((char *)cent, 32768 * sizeof(float));
-	in.read((char *)WPCA_w, 134217728 * sizeof(float));
-	in.read((char *)WPCA_b, 4096 * sizeof(float));
+	in.read((char *)WPCA_w, 4194304 * sizeof(float));
+	in.read((char *)WPCA_b, 128 * sizeof(float));
 	in.close();
 
 	// Doing face detection.
